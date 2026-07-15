@@ -1,6 +1,7 @@
 using UnityEngine;
 using System.Collections.Generic;
 using UnityEngine.UI;
+using DouDiZhu.Logic.Models;
 
 public class HandCardPanel : MonoBehaviour
 {
@@ -14,10 +15,6 @@ public class HandCardPanel : MonoBehaviour
     void Start()
     {
         playCardButton.onClick.AddListener(onPlayCardBtnClicked);
-
-
-        var randomHand = CardTest.GenerateRandomCards(17);
-        InitializeHand(randomHand);
     }
 
 
@@ -96,7 +93,7 @@ public class HandCardPanel : MonoBehaviour
         }
 
         // 2. 解析牌型（自动在 CardGroup 构造时通过纯逻辑类 CardRule 校验）
-        CardGroup cardGroup = new CardGroup(selectedCards);
+        CardGroup cardGroup = new DouDiZhu.Logic.Models.CardGroup(selectedCards);
 
         // 3. 检查合法性
         if (cardGroup.Type == CardType.Invalid)
