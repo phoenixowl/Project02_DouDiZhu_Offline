@@ -5,11 +5,11 @@ namespace DouDiZhu.Logic.Events
     /// </summary>
     public readonly struct PlayerWinEvent
     {
-        public readonly int WinnerIndex;
+        public readonly int WinnerID;
         public readonly bool IsLandlordWin;
-        public PlayerWinEvent(int winnerIndex, bool isLandlordWin)
+        public PlayerWinEvent(int winnerID, bool isLandlordWin)
         {
-            WinnerIndex = winnerIndex;
+            WinnerID = winnerID;
             IsLandlordWin = isLandlordWin;
         }
     }

@@ -1,5 +1,7 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
+using static UnityEditor.Experimental.GraphView.GraphView;
 
 namespace DouDiZhu.Logic.Models
 {
@@ -12,14 +14,15 @@ namespace DouDiZhu.Logic.Models
     public class GameState
     {
         // ========== 玩家数据 ==========
-        public List<PlayerData> Players { get; private set; }  // 固定3人，索引0=本地/玩家
+        public Dictionary<int, PlayerData> PlayerDict { get; private set; }  // id到PlayerData的映射
+        public List<int> PlayerOrder { get; private set; }  // 一个房间内的玩家顺序 存储顺序为0, 1 , 2玩家的ID
 
         // ========== 牌桌数据 ==========
         public List<Card> HoleCards { get; private set; }      // 3张底牌（未翻开前背面朝上）
         public CardGroup TableCards { get; set; }             // 当前桌面上的牌（上家出的牌）
-        public int CurrentTurnIndex { get; set; }              // 当前轮到谁（0,1,2）
-        public int LandlordIndex { get; set; }                 // 地主索引（-1表示未确定）
-        public int LastPlayedIndex { get; set; }               // 最后出牌的玩家索引（用于回合控制）
+        public int CurrentTurnID { get; set; }              // 当前轮到谁（id）
+        public int LandlordID { get; set; }                 // 地主索引（-1表示未确定）
+        public int LastPlayedID { get; set; }               // 最后出牌的玩家索引（用于回合控制）
         public bool IsGameOver { get; set; }                   // 游戏是否结束
         public string WinnerName { get; set; }                 // 胜利者名字（结算用）
 
@@ -28,23 +31,32 @@ namespace DouDiZhu.Logic.Models
 
         public GameState()
         {
-            Players = new List<PlayerData>();
+            PlayerDict = new Dictionary<int, PlayerData>();
+            PlayerOrder = new List<int>();
             HoleCards = new List<Card>();
             TableCards = new CardGroup(new List<Card> { });
-            CurrentTurnIndex = 0;
-            LandlordIndex = -1;
-            LastPlayedIndex = -1;
+            CurrentTurnID = 0;
+            LandlordID = -1;
+            LastPlayedID = -1;
             IsGameOver = false;
             PassCount = 0;
         }
 
         /// <summary>
+        /// 根据ID获取玩家
+        /// </summary>
+        public PlayerData GetPlayer(int id)
+        {
+            return PlayerDict.TryGetValue(id, out var value) ? value : null;
+        }
+
+        /// <summary>
         /// 根据索引获取玩家
         /// </summary>
-        public PlayerData GetPlayer(int index)
+        public int GetPlayerByIndex(int index)
         {
-            if (index < 0 || index >= Players.Count) return null;
-            return Players[index];
+            if(PlayerOrder.Count > index) return PlayerOrder[index];
+            return 0;
         }
 
         /// <summary>
@@ -52,7 +64,7 @@ namespace DouDiZhu.Logic.Models
         /// </summary>
         public PlayerData GetCurrentPlayer()
         {
-            return GetPlayer(CurrentTurnIndex);
+            return GetPlayer(CurrentTurnID);
         }
 
         /// <summary>

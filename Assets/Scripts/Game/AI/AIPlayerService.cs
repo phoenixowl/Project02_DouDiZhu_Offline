@@ -40,7 +40,7 @@ namespace DouDiZhu.Logic.AI
         // ============================================================
         // 1. 叫地主决策
         // ============================================================
-        public bool ShouldCallLandlord(int seatIndex)
+        public bool ShouldCallLandlord(int playerID)
         {
             // 简化策略：根据概率随机叫地主
             return _random.NextDouble() < _bidProbability;
@@ -49,9 +49,9 @@ namespace DouDiZhu.Logic.AI
         // ============================================================
         // 2. 出牌决策（核心）
         // ============================================================
-        public AIDecision DecideAction(int seatIndex)
+        public AIDecision DecideAction(int playerID)
         {
-            var player = _state.Players[seatIndex];
+            var player = _state.PlayerDict[playerID];
             var handCards = player.HandCards;
 
             // 如果手牌为空（理论上不可能，但防御）
@@ -83,52 +83,47 @@ namespace DouDiZhu.Logic.AI
             // 顺序：单张 -> 对子 -> 三张 -> 三带一 -> 三带二 -> 顺子 -> 连对 -> 飞机 -> 炸弹 -> 王炸
             var sorted = handCards.OrderBy(c => c.Rank).ToList();
 
-            // 3.1 单张（最小）
-            var single = sorted.Take(1).ToList();
-            if (IsValidPlay(single))
-                return AIDecision.Play(single);
-
-            // 3.2 对子（最小对子）
-            var pair = FindSmallestPair(sorted);
-            if (pair != null && IsValidPlay(pair))
-                return AIDecision.Play(pair);
-
-            // 3.3 三张（最小三张）
-            var triple = FindSmallestTriple(sorted);
-            if (triple != null && IsValidPlay(triple))
-                return AIDecision.Play(triple);
-
-            // 3.4 三带一（最小三张 + 最小单张）
-            var tripleWithOne = FindSmallestTripleWithOne(sorted);
-            if (tripleWithOne != null && IsValidPlay(tripleWithOne))
-                return AIDecision.Play(tripleWithOne);
-
-            // 3.5 三带二（最小三张 + 最小对子）
-            var tripleWithTwo = FindSmallestTripleWithTwo(sorted);
-            if (tripleWithTwo != null && IsValidPlay(tripleWithTwo))
-                return AIDecision.Play(tripleWithTwo);
-
-            // 3.6 顺子（从最短的5张开始，从小到大尝试）
-            var straight = FindSmallestStraight(sorted);
-            if (straight != null && IsValidPlay(straight))
-                return AIDecision.Play(straight);
-
-            // 3.7 连对（从3对开始，从小到大尝试）
-            var doubleStraight = FindSmallestDoubleStraight(sorted);
-            if (doubleStraight != null && IsValidPlay(doubleStraight))
-                return AIDecision.Play(doubleStraight);
+            // 3.9 飞机带单
+            var airplaneWithSingle = FindSmallestAirplaneWithSingle(sorted);
+            if (airplaneWithSingle != null && IsValidPlay(airplaneWithSingle))
+                return AIDecision.Play(airplaneWithSingle);
 
             // 3.8 飞机（纯飞机，不带翅膀）
             var airplane = FindSmallestAirplane(sorted);
             if (airplane != null && IsValidPlay(airplane))
                 return AIDecision.Play(airplane);
 
-            // 3.9 飞机带单
-            var airplaneWithSingle = FindSmallestAirplaneWithSingle(sorted);
-            if (airplaneWithSingle != null && IsValidPlay(airplaneWithSingle))
-                return AIDecision.Play(airplaneWithSingle);
+            // 3.7 连对（从3对开始，从小到大尝试）
+            var doubleStraight = FindSmallestDoubleStraight(sorted);
+            if (doubleStraight != null && IsValidPlay(doubleStraight))
+                return AIDecision.Play(doubleStraight);
 
-            // 3.10 飞机带对
+            // 3.6 顺子（从最短的5张开始，从小到大尝试）
+            var straight = FindSmallestStraight(sorted);
+            if (straight != null && IsValidPlay(straight))
+                return AIDecision.Play(straight);
+
+            // 3.5 三带二（最小三张 + 最小对子）
+            var tripleWithTwo = FindSmallestTripleWithTwo(sorted);
+            if (tripleWithTwo != null && IsValidPlay(tripleWithTwo))
+                return AIDecision.Play(tripleWithTwo);
+
+            // 3.4 三带一（最小三张 + 最小单张）
+            var tripleWithOne = FindSmallestTripleWithOne(sorted);
+            if (tripleWithOne != null && IsValidPlay(tripleWithOne))
+                return AIDecision.Play(tripleWithOne);
+
+            // 3.3 三张（最小三张）
+            var triple = FindSmallestTriple(sorted);
+            if (triple != null && IsValidPlay(triple))
+                return AIDecision.Play(triple);
+
+            // 3.2 对子（最小对子）
+            var pair = FindSmallestPair(sorted);
+            if (pair != null && IsValidPlay(pair))
+                return AIDecision.Play(pair);
+
+            // 3.10 飞机带对（未实现，放在最后表示弃用）
             var airplaneWithPair = FindSmallestAirplaneWithPair(sorted);
             if (airplaneWithPair != null && IsValidPlay(airplaneWithPair))
                 return AIDecision.Play(airplaneWithPair);
@@ -142,6 +137,11 @@ namespace DouDiZhu.Logic.AI
             var kingBomb = FindKingBomb(sorted);
             if (kingBomb != null && IsValidPlay(kingBomb))
                 return AIDecision.Play(kingBomb, true);
+
+            // 3.1 单张（最小）
+            var single = sorted.Take(1).ToList();
+            if (IsValidPlay(single))
+                return AIDecision.Play(single);
 
             // 极端情况：手里全是无法组成合法牌型的散牌（理论上不可能，因为单张总是合法）
             // 但以防万一，出最小的单张
@@ -267,170 +267,153 @@ namespace DouDiZhu.Logic.AI
             return null;
         }
 
-        // 6.5 找最小的顺子（从5张开始，逐步增长）
+        // 6.5 找最小的顺子（只找最短的5张，因为这是最小出牌策略）
         private List<Card> FindSmallestStraight(List<Card> sortedCards)
         {
-            var ranks = sortedCards.Select(c => (int)c.Rank).Distinct().Where(r => r >= 3 && r <= 14).OrderBy(r => r).ToList();
-            for (int length = 5; length <= 12; length++) // 最长顺子 3~14 共12张
+            // 获取所有不同的点数（排除2和王，因为不能参与顺子）
+            var ranks = sortedCards.Select(c => (int)c.Rank)
+                                   .Distinct()
+                                   .Where(r => r >= 3 && r <= 14)
+                                   .OrderBy(r => r)
+                                   .ToList();
+
+            // 只需要检查长度为5的连续序列
+            // 从最小点数开始尝试，找到的第一组就是"最小"的顺子
+            for (int i = 0; i <= ranks.Count - 5; i++)
             {
-                for (int i = 0; i <= ranks.Count - length; i++)
+                // 检查从 i 开始的 5 张是否连续
+                bool isContiguous = true;
+                for (int j = 0; j < 4; j++)
                 {
-                    bool isContiguous = true;
-                    for (int j = 0; j < length - 1; j++)
+                    if (ranks[i + j + 1] - ranks[i + j] != 1)
                     {
-                        if (ranks[i + j + 1] - ranks[i + j] != 1)
-                        {
-                            isContiguous = false;
-                            break;
-                        }
-                    }
-                    if (isContiguous)
-                    {
-                        // 从手牌中取出这些牌（每个点数取一张）
-                        var result = new List<Card>();
-                        for (int j = 0; j < length; j++)
-                        {
-                            var card = sortedCards.First(c => (int)c.Rank == ranks[i + j]);
-                            result.Add(card);
-                        }
-                        return result;
+                        isContiguous = false;
+                        break;
                     }
                 }
+
+                if (isContiguous)
+                {
+                    // 从手牌中取出这 5 张牌（每个点数取一张）
+                    var result = new List<Card>();
+                    for (int j = 0; j < 5; j++)
+                    {
+                        var card = sortedCards.First(c => (int)c.Rank == ranks[i + j]);
+                        result.Add(card);
+                    }
+                    return result;
+                }
             }
+
             return null;
         }
 
-        // 6.6 找最小的连对（3对起）
+        //找最小的连对
         private List<Card> FindSmallestDoubleStraight(List<Card> sortedCards)
         {
             var rankCounts = GetRankCounts(sortedCards);
             var pairRanks = rankCounts.Where(kv => kv.Value >= 2 && kv.Key >= 3 && kv.Key <= 14)
                                       .Select(kv => kv.Key).OrderBy(r => r).ToList();
 
-            for (int length = 3; length <= pairRanks.Count; length++)
+            // 最小连对是 3 对，从最小点数开始尝试
+            for (int i = 0; i <= pairRanks.Count - 3; i++)
             {
-                for (int i = 0; i <= pairRanks.Count - length; i++)
+                if (pairRanks[i + 2] - pairRanks[i + 1] == 1 && pairRanks[i + 1] - pairRanks[i] == 1)
                 {
-                    bool isContiguous = true;
-                    for (int j = 0; j < length - 1; j++)
+                    var result = new List<Card>();
+                    for (int j = 0; j < 3; j++)
                     {
-                        if (pairRanks[i + j + 1] - pairRanks[i + j] != 1)
-                        {
-                            isContiguous = false;
-                            break;
-                        }
+                        var cards = sortedCards.Where(c => (int)c.Rank == pairRanks[i + j]).Take(2).ToList();
+                        result.AddRange(cards);
                     }
-                    if (isContiguous)
-                    {
-                        var result = new List<Card>();
-                        for (int j = 0; j < length; j++)
-                        {
-                            var cards = sortedCards.Where(c => (int)c.Rank == pairRanks[i + j]).Take(2).ToList();
-                            result.AddRange(cards);
-                        }
-                        return result;
-                    }
+                    return result;
                 }
             }
             return null;
         }
 
-        // 6.7 找最小的飞机（纯飞机，不带翅膀）
+        //找最小的飞机（不带翅膀
         private List<Card> FindSmallestAirplane(List<Card> sortedCards)
         {
             var rankCounts = GetRankCounts(sortedCards);
             var tripleRanks = rankCounts.Where(kv => kv.Value >= 3 && kv.Key >= 3 && kv.Key <= 14)
                                         .Select(kv => kv.Key).OrderBy(r => r).ToList();
 
-            for (int length = 2; length <= tripleRanks.Count; length++)
+            // 最小飞机是 2 组三张，从最小点数开始尝试
+            for (int i = 0; i <= tripleRanks.Count - 2; i++)
             {
-                for (int i = 0; i <= tripleRanks.Count - length; i++)
+                if (tripleRanks[i + 1] - tripleRanks[i] == 1)
                 {
-                    bool isContiguous = true;
-                    for (int j = 0; j < length - 1; j++)
+                    var result = new List<Card>();
+                    for (int j = 0; j < 2; j++)
                     {
-                        if (tripleRanks[i + j + 1] - tripleRanks[i + j] != 1)
-                        {
-                            isContiguous = false;
-                            break;
-                        }
+                        var cards = sortedCards.Where(c => (int)c.Rank == tripleRanks[i + j]).Take(3).ToList();
+                        result.AddRange(cards);
                     }
-                    if (isContiguous)
-                    {
-                        var result = new List<Card>();
-                        for (int j = 0; j < length; j++)
-                        {
-                            var cards = sortedCards.Where(c => (int)c.Rank == tripleRanks[i + j]).Take(3).ToList();
-                            result.AddRange(cards);
-                        }
-                        return result;
-                    }
+                    return result;
                 }
             }
             return null;
         }
 
-        // 6.8 找最小的飞机带单
+        // 6.8 找最小的飞机带单（只搜索最短长度：2组三张 + 2张单牌翅膀）
         private List<Card> FindSmallestAirplaneWithSingle(List<Card> sortedCards)
         {
-            // 先找纯飞机，然后找翅膀
             var rankCounts = GetRankCounts(sortedCards);
             var tripleRanks = rankCounts.Where(kv => kv.Value >= 3 && kv.Key >= 3 && kv.Key <= 14)
-                                        .Select(kv => kv.Key).OrderBy(r => r).ToList();
+                                        .Select(kv => kv.Key)
+                                        .OrderBy(r => r)
+                                        .ToList();
 
-            for (int length = 2; length <= tripleRanks.Count; length++)
+            // 至少需要2组连续的三张
+            if (tripleRanks.Count < 2)
+                return null;
+
+            // 只搜索最短长度：2组三张 (6张牌)
+            // 从最小点数开始尝试，找到的第一组就是"最小"的飞机带单
+            for (int i = 0; i <= tripleRanks.Count - 2; i++)
             {
-                for (int i = 0; i <= tripleRanks.Count - length; i++)
+                // 检查是否连续
+                if (tripleRanks[i + 1] - tripleRanks[i] != 1)
+                    continue;
+
+                int bodyRank1 = tripleRanks[i];
+                int bodyRank2 = tripleRanks[i + 1];
+
+                // ---- 构造机身（6张牌） ----
+                var result = new List<Card>();
+                result.AddRange(sortedCards.Where(c => (int)c.Rank == bodyRank1).Take(3));
+                result.AddRange(sortedCards.Where(c => (int)c.Rank == bodyRank2).Take(3));
+
+                // ---- 从剩余牌中取最小的2张作为翅膀（可以与机身同点数） ----
+                var tempCounts = new Dictionary<int, int>(rankCounts);
+                tempCounts[bodyRank1] -= 3;
+                tempCounts[bodyRank2] -= 3;
+
+                int wingsNeeded = 2;
+                var wings = new List<Card>();
+                foreach (var kv in tempCounts.Where(k => k.Value > 0).OrderBy(k => k.Key))
                 {
-                    bool isContiguous = true;
-                    for (int j = 0; j < length - 1; j++)
+                    int take = Math.Min(kv.Value, wingsNeeded - wings.Count);
+                    var cardsOfRank = sortedCards.Where(c => (int)c.Rank == kv.Key).ToList();
+                    for (int j = 0; j < take; j++)
                     {
-                        if (tripleRanks[i + j + 1] - tripleRanks[i + j] != 1)
-                        {
-                            isContiguous = false;
-                            break;
-                        }
+                        wings.Add(cardsOfRank[j]);
                     }
-                    if (isContiguous)
-                    {
-                        var bodyRanks = tripleRanks.Skip(i).Take(length).ToList();
-                        // 检查剩余牌数量是否足够做翅膀（每个飞机带一张）
-                        int totalWingsNeeded = length;
-                        var remaining = sortedCards.Where(c => !bodyRanks.Contains((int)c.Rank)).ToList();
-                        // 但可能剩余牌里有同点数的多张，例如三带一的“一”不能从机身里取
-                        // 所以先用CloneAndDeduct逻辑
-                        var tempCounts = new Dictionary<int, int>(rankCounts);
-                        foreach (var r in bodyRanks) tempCounts[r] -= 3;
-                        int remainingCount = tempCounts.Values.Sum(v => v > 0 ? v : 0);
-                        if (remainingCount >= totalWingsNeeded)
-                        {
-                            var result = new List<Card>();
-                            // 取机身
-                            foreach (var r in bodyRanks)
-                            {
-                                var cards = sortedCards.Where(c => (int)c.Rank == r).Take(3).ToList();
-                                result.AddRange(cards);
-                            }
-                            // 取翅膀（最小的张）
-                            var wingRanks = new List<int>();
-                            foreach (var kv in tempCounts.OrderBy(k => k.Key))
-                            {
-                                if (kv.Value > 0)
-                                {
-                                    int take = Math.Min(kv.Value, totalWingsNeeded - wingRanks.Count);
-                                    for (int j = 0; j < take; j++) wingRanks.Add(kv.Key);
-                                }
-                            }
-                            foreach (var r in wingRanks)
-                            {
-                                var card = sortedCards.First(c => (int)c.Rank == r && !result.Contains(c));
-                                result.Add(card);
-                            }
-                            return result;
-                        }
-                    }
+                    if (wings.Count >= wingsNeeded)
+                        break;
                 }
+
+                // 如果翅膀数量足够，组合并返回
+                if (wings.Count == wingsNeeded)
+                {
+                    result.AddRange(wings);
+                    return result;
+                }
+
+                // 如果翅膀不够，说明剩余牌不足，继续尝试下一组连续三张
             }
+
             return null;
         }
 
@@ -575,35 +558,44 @@ namespace DouDiZhu.Logic.AI
             }
             return null;
         }
-
         private List<Card> FindBiggerStraight(List<Card> hand, CardGroup target)
         {
             int length = target.Cards.Count;
-            int maxRank = target.WeightSequence[0];
-            var ranks = hand.Select(c => (int)c.Rank).Distinct().Where(r => r >= 3 && r <= 14).OrderBy(r => r).ToList();
+            int targetMaxRank = target.WeightSequence[0]; // 上家顺子的最大牌
 
-            // 从 maxRank+1 开始找更大的顺子
-            for (int start = maxRank + 1; start <= 14 - length + 1; start++)
+            // 获取手牌中所有可能的点数（排除2和王）
+            var distinctRanks = hand.Select(c => (int)c.Rank).Distinct()
+                                    .Where(r => r >= 3 && r <= 14)
+                                    .OrderBy(r => r).ToList();
+
+            // 尝试所有可能的起始点（从最小的3开始）
+            for (int start = 3; start <= 14 - length + 1; start++)
             {
                 bool found = true;
-                var selectedRanks = new List<int>();
                 for (int i = 0; i < length; i++)
                 {
-                    if (!ranks.Contains(start + i))
+                    if (!distinctRanks.Contains(start + i))
                     {
                         found = false;
                         break;
                     }
-                    selectedRanks.Add(start + i);
                 }
+
                 if (found)
                 {
-                    var result = new List<Card>();
-                    foreach (var r in selectedRanks)
+                    int candidateMaxRank = start + length - 1;
+                    // 核心修正：只要最大牌大于上家的最大牌即可
+                    if (candidateMaxRank > targetMaxRank)
                     {
-                        result.Add(hand.First(c => (int)c.Rank == r));
+                        var result = new List<Card>();
+                        for (int i = 0; i < length; i++)
+                        {
+                            // 从手牌中取出一张对应点数的牌（如果有重复点数，确保取一张）
+                            var card = hand.First(c => (int)c.Rank == start + i);
+                            result.Add(card);
+                        }
+                        return result;
                     }
-                    return result;
                 }
             }
             return null;
@@ -611,14 +603,15 @@ namespace DouDiZhu.Logic.AI
 
         private List<Card> FindBiggerDoubleStraight(List<Card> hand, CardGroup target)
         {
-            int length = target.Cards.Count / 2;
-            int maxRank = target.WeightSequence[0];
+            int length = target.Cards.Count / 2; // 连对的对数
+            int targetMaxRank = target.WeightSequence[0]; // 上家连对的最大点数
 
             var rankCounts = GetRankCounts(hand);
             var pairRanks = rankCounts.Where(kv => kv.Value >= 2 && kv.Key >= 3 && kv.Key <= 14)
                                       .Select(kv => kv.Key).OrderBy(r => r).ToList();
 
-            for (int start = maxRank + 1; start <= 14 - length + 1; start++)
+            // 尝试所有可能的起始点（从3开始）
+            for (int start = 3; start <= 14 - length + 1; start++)
             {
                 bool found = true;
                 for (int i = 0; i < length; i++)
@@ -629,15 +622,21 @@ namespace DouDiZhu.Logic.AI
                         break;
                     }
                 }
+
                 if (found)
                 {
-                    var result = new List<Card>();
-                    for (int i = 0; i < length; i++)
+                    int candidateMaxRank = start + length - 1;
+                    // 修正：最大牌大于上家的最大牌即可
+                    if (candidateMaxRank > targetMaxRank)
                     {
-                        var cards = hand.Where(c => (int)c.Rank == start + i).Take(2).ToList();
-                        result.AddRange(cards);
+                        var result = new List<Card>();
+                        for (int i = 0; i < length; i++)
+                        {
+                            var cards = hand.Where(c => (int)c.Rank == start + i).Take(2).ToList();
+                            result.AddRange(cards);
+                        }
+                        return result;
                     }
-                    return result;
                 }
             }
             return null;
@@ -645,14 +644,14 @@ namespace DouDiZhu.Logic.AI
 
         private List<Card> FindBiggerAirplane(List<Card> hand, CardGroup target)
         {
-            int length = target.Cards.Count / 3;
-            int maxRank = target.WeightSequence[0];
+            int length = target.Cards.Count / 3; // 飞机的长度
+            int targetMaxRank = target.WeightSequence[0];
 
             var rankCounts = GetRankCounts(hand);
             var tripleRanks = rankCounts.Where(kv => kv.Value >= 3 && kv.Key >= 3 && kv.Key <= 14)
                                         .Select(kv => kv.Key).OrderBy(r => r).ToList();
 
-            for (int start = maxRank + 1; start <= 14 - length + 1; start++)
+            for (int start = 3; start <= 14 - length + 1; start++)
             {
                 bool found = true;
                 for (int i = 0; i < length; i++)
@@ -663,15 +662,20 @@ namespace DouDiZhu.Logic.AI
                         break;
                     }
                 }
+
                 if (found)
                 {
-                    var result = new List<Card>();
-                    for (int i = 0; i < length; i++)
+                    int candidateMaxRank = start + length - 1;
+                    if (candidateMaxRank > targetMaxRank)
                     {
-                        var cards = hand.Where(c => (int)c.Rank == start + i).Take(3).ToList();
-                        result.AddRange(cards);
+                        var result = new List<Card>();
+                        for (int i = 0; i < length; i++)
+                        {
+                            var cards = hand.Where(c => (int)c.Rank == start + i).Take(3).ToList();
+                            result.AddRange(cards);
+                        }
+                        return result;
                     }
-                    return result;
                 }
             }
             return null;
@@ -679,15 +683,14 @@ namespace DouDiZhu.Logic.AI
 
         private List<Card> FindBiggerAirplaneWithSingle(List<Card> hand, CardGroup target)
         {
-            // 简化实现：找更大的飞机，然后任意配翅膀
-            int length = (target.Cards.Count - 1) / 4; // 飞机长度
-            int maxRank = target.WeightSequence[0];
+            int length = target.Cards.Count / 4; // 飞机长度
+            int targetMaxRank = target.WeightSequence[0];
 
             var rankCounts = GetRankCounts(hand);
             var tripleRanks = rankCounts.Where(kv => kv.Value >= 3 && kv.Key >= 3 && kv.Key <= 14)
                                         .Select(kv => kv.Key).OrderBy(r => r).ToList();
 
-            for (int start = maxRank + 1; start <= 14 - length + 1; start++)
+            for (int start = 3; start <= 14 - length + 1; start++)
             {
                 bool found = true;
                 for (int i = 0; i < length; i++)
@@ -698,31 +701,44 @@ namespace DouDiZhu.Logic.AI
                         break;
                     }
                 }
+
                 if (found)
                 {
-                    var result = new List<Card>();
-                    var bodyRanks = Enumerable.Range(start, length).ToList();
-                    // 取机身
-                    foreach (var r in bodyRanks)
+                    int candidateMaxRank = start + length - 1;
+                    if (candidateMaxRank > targetMaxRank)
                     {
-                        var cards = hand.Where(c => (int)c.Rank == r).Take(3).ToList();
-                        result.AddRange(cards);
+                        var result = new List<Card>();
+                        var bodyRanks = Enumerable.Range(start, length).ToList();
+
+                        // 取机身
+                        foreach (var r in bodyRanks)
+                        {
+                            var cards = hand.Where(c => (int)c.Rank == r).Take(3).ToList();
+                            result.AddRange(cards);
+                        }
+
+                        // 取翅膀（最小的单张，不能来自机身）
+                        var tempCounts = new Dictionary<int, int>(rankCounts);
+                        foreach (var r in bodyRanks) tempCounts[r] -= 3;
+
+                        int wingsNeeded = length;
+                        var wingRanks = new List<int>();
+                        foreach (var kv in tempCounts.Where(k => k.Value > 0).OrderBy(k => k.Key))
+                        {
+                            int take = Math.Min(kv.Value, wingsNeeded - wingRanks.Count);
+                            for (int j = 0; j < take; j++) wingRanks.Add(kv.Key);
+                        }
+
+                        if (wingRanks.Count == wingsNeeded)
+                        {
+                            foreach (var r in wingRanks)
+                            {
+                                var card = hand.First(c => (int)c.Rank == r && !result.Contains(c));
+                                result.Add(card);
+                            }
+                            return result;
+                        }
                     }
-                    // 取翅膀（最小张）
-                    var wingRanks = new List<int>();
-                    var tempCounts = new Dictionary<int, int>(rankCounts);
-                    foreach (var r in bodyRanks) tempCounts[r] -= 3;
-                    foreach (var kv in tempCounts.Where(k => k.Value > 0).OrderBy(k => k.Key))
-                    {
-                        int take = Math.Min(kv.Value, length - wingRanks.Count);
-                        for (int j = 0; j < take; j++) wingRanks.Add(kv.Key);
-                    }
-                    foreach (var r in wingRanks)
-                    {
-                        var card = hand.First(c => (int)c.Rank == r && !result.Contains(c));
-                        result.Add(card);
-                    }
-                    return result;
                 }
             }
             return null;

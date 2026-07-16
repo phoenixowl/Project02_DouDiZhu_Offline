@@ -2,11 +2,11 @@ namespace DouDiZhu.Logic.Events
 {
     public readonly struct BidPlacedEvent
     {
-        public readonly int PlayerIndex;
+        public readonly int PlayerID;
         public readonly bool IsCalling;
-        public BidPlacedEvent(int playerIndex, bool isCalling)
+        public BidPlacedEvent(int playerID, bool isCalling)
         {
-            PlayerIndex = playerIndex;
+            PlayerID = playerID;
             IsCalling = isCalling;
         }
     }

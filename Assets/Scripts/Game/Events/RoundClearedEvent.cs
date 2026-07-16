@@ -5,7 +5,7 @@ namespace DouDiZhu.Logic.Events
     /// </summary>
     public readonly struct RoundClearedEvent
     {
-        public readonly int LastPlayedIndex;
-        public RoundClearedEvent(int lastPlayedIndex) => LastPlayedIndex = lastPlayedIndex;
+        public readonly int LastPlayedID;
+        public RoundClearedEvent(int lastPlayedID) => LastPlayedID = lastPlayedID;
     }
 }

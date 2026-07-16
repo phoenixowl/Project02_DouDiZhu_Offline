@@ -2,10 +2,11 @@ using System;
 
 namespace DouDiZhu.Logic.Commands
 {
+    //已经弃用
     /// <summary>
     /// 命令调度器（全局静态类）
     /// </summary>
-    public static class CommandDispatcher
+   /*public static class CommandDispatcher
     {
         /// <summary>
         /// 拦截器委托：返回 true 表示命令已被拦截（联机模式），无需本地执行
@@ -27,5 +28,5 @@ namespace DouDiZhu.Logic.Commands
             // 2. 单机版（或未拦截）：直接本地执行
             command.Execute();
         }
-    }
+    }*/
 }

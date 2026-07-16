@@ -2,7 +2,8 @@ using DouDiZhu.Logic.StateMachine;
 
 namespace DouDiZhu.Logic.Commands
 {
-    /// <summary>
+    //已经弃用
+    /*/// <summary>
     /// 叫地主命令，可能是叫地主或不叫地主
     /// </summary>
     public class BidCommand : ICommand
@@ -24,5 +25,5 @@ namespace DouDiZhu.Logic.Commands
             int seatIndex = PlayerIdMapper.GetSeatIndex(_playerId);
             _controller.PlaceBid(seatIndex, _isCalling);
         }
-    }
+    }*/
 }

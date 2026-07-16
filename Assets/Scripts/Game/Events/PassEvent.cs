@@ -5,7 +5,7 @@ namespace DouDiZhu.Logic.Events
     /// </summary>
     public readonly struct PassEvent
     {
-        public readonly int PlayerIndex;
-        public PassEvent(int playerIndex) => PlayerIndex = playerIndex;
+        public readonly int PlayerID;
+        public PassEvent(int playerID) => PlayerID = playerID;
     }
 }

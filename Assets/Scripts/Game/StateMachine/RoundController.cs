@@ -3,7 +3,9 @@ using DouDiZhu.Logic.Models;
 using DouDiZhu.Logic.Services; // 假设你的 CardRule 在这个命名空间
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
+using UnityEditor.VersionControl;
 
 namespace DouDiZhu.Logic.StateMachine
 {
@@ -24,6 +26,7 @@ namespace DouDiZhu.Logic.StateMachine
         public GameRoundState CurrentState => _currentState;
 
         // ========== 1. 开始游戏 ==========
+        //TODO : 修改GameInitializedEvent，使其更符合多人模式
         public void StartGame()
         {
             if (_currentState != GameRoundState.Idle)
@@ -34,30 +37,32 @@ namespace DouDiZhu.Logic.StateMachine
 
             // 状态切换到叫地主阶段
             _currentState = GameRoundState.Bidding;
-            _state.CurrentTurnIndex = 0;
+            _state.CurrentTurnID = _state.PlayerOrder[0];
 
             // ---- 构造安全的玩家摘要（不含底牌） ----
             var summaries = new List<PlayerSummary>();
-            for (int i = 0; i < _state.Players.Count; i++)
+            for (int i = 0; i < _state.PlayerOrder.Count; i++)
             {
-                var p = _state.Players[i];
-                bool isLocal = (i == 0); // 假设索引0为本地玩家
+                var p = _state.PlayerDict[_state.PlayerOrder[i]];
                 summaries.Add(new PlayerSummary(
-                    id: i,
+                    id: _state.PlayerOrder[i],
+                    isAI:p.IsAI,
                     name: p.PlayerName,
                     cardCount: p.CardCount,
-                    isLocal: isLocal,
-                    handCards: isLocal ? new List<Card>(p.HandCards) : null // 仅本地玩家可见
+                    isLocal: true,
+                    handCards:new List<Card>(p.HandCards)
                 ));
             }
 
             // ---- 发射安全事件（无底牌泄露） ----
-            EventBus.Emit(new GameInitializedEvent(summaries, _state.CurrentTurnIndex));
-            EventBus.Emit(new TurnChangedEvent(_state.CurrentTurnIndex));
+            
+            EventBus.Emit(new GameInitializedEvent(summaries));
+            EventBus.Emit(new InvalidOperationEvent("注意，多人版本需修改GameInitializedEvent"));
+            EventBus.Emit(new TurnChangedEvent(_state.CurrentTurnID));
         }
 
         // ========== 2. 叫地主 ==========
-        public void PlaceBid(int playerIndex, bool isCalling)
+        public void PlaceBid(int playerID, bool isCalling)
         {
             if (_currentState != GameRoundState.Bidding)
             {
@@ -65,65 +70,66 @@ namespace DouDiZhu.Logic.StateMachine
                 return;
             }
 
-            if (playerIndex != _state.CurrentTurnIndex)
+            if (playerID != _state.CurrentTurnID)
             {
-                EventBus.Emit(new InvalidOperationEvent($"未轮到玩家 {playerIndex} 叫地主"));
+                EventBus.Emit(new InvalidOperationEvent($"未轮到玩家 {playerID} 叫地主"));
                 return;
             }
 
             // 记录叫地主结果
-            EventBus.Emit(new BidPlacedEvent(playerIndex, isCalling));
+            EventBus.Emit(new BidPlacedEvent(playerID, isCalling));
 
             if (isCalling)
             {
                 // 有人叫地主 -> 直接确定地主（简化版，不实现抢地主）
-                ConfirmLandlord(playerIndex);
+                ConfirmLandlord(playerID);
                 return;
             }
 
             // 不叫 -> 轮到下一个玩家
-            int nextIndex = GetNextPlayerIndex(playerIndex);
+            int nextIndex = GetNextPlayerIndex(_state.PlayerOrder.IndexOf(playerID));
             if (nextIndex == 0)
             {
                 // 所有人都没叫 -> 强制第一个玩家当地主（或随机，根据需求）
                 // 这里简化为强制玩家0当地主
-                ConfirmLandlord(0);
+                ConfirmLandlord(_state.PlayerOrder[0]);
             }
             else
             {
-                _state.CurrentTurnIndex = nextIndex;
-                EventBus.Emit(new TurnChangedEvent(nextIndex));
+                int nextID = _state.GetPlayerByIndex(nextIndex);
+                _state.CurrentTurnID = nextID;
+                EventBus.Emit(new TurnChangedEvent(nextID));
             }
         }
 
         // ========== 3. 确认地主（内部方法） ==========
-        private void ConfirmLandlord(int landlordIndex)
+        private void ConfirmLandlord(int landlordID)
         {
-            _state.LandlordIndex = landlordIndex;
-            _state.Players[landlordIndex].Identity = PlayerIdentity.Landlord;
+            _state.LandlordID = landlordID;
+            _state.PlayerDict[landlordID].Identity = PlayerIdentity.Landlord;
 
             // 底牌加入地主手牌
-            var landlord = _state.Players[landlordIndex];
+            var landlord = _state.PlayerDict[landlordID];
             landlord.AddCards(_state.HoleCards);
             landlord.SortHand();
 
             // 进入出牌阶段
             _currentState = GameRoundState.Playing;
-            _state.CurrentTurnIndex = landlordIndex;
-            _state.LastPlayedIndex = landlordIndex;
+            _state.CurrentTurnID = landlordID;
+            _state.LastPlayedID = landlordID;
             _state.TableCards = new CardGroup(new List<Card>());
             _state.PassCount = 0;
 
             // ---- 安全地公开底牌（此时已合法） ----
             EventBus.Emit(new LandlordConfirmedEvent(
-                landlordIndex,
+                landlordID,
                 new List<Card>(_state.HoleCards) // 传递副本，防止外部修改
             ));
-            EventBus.Emit(new TurnChangedEvent(landlordIndex));
+            EventBus.Emit(new TurnChangedEvent(landlordID));
         }
 
         // ========== 4. 出牌 ==========
-        public void PlayCards(int playerIndex, List<Card> selectedCards)
+        public void PlayCards(int playerID, List<Card> selectedCards)
         {
             // 状态检查
             if (_currentState != GameRoundState.Playing)
@@ -133,13 +139,13 @@ namespace DouDiZhu.Logic.StateMachine
             }
 
             // 回合检查
-            if (playerIndex != _state.CurrentTurnIndex)
+            if (playerID != _state.CurrentTurnID)
             {
-                EventBus.Emit(new InvalidOperationEvent($"未轮到玩家 {playerIndex} 出牌"));
+                EventBus.Emit(new InvalidOperationEvent($"未轮到玩家 {playerID} 出牌"));
                 return;
             }
 
-            var player = _state.Players[playerIndex];
+            var player = _state.PlayerDict[playerID];
 
             // ---- 二次校验（严谨的服务器级校验） ----
             // 0. 检查是否有重复卡牌
@@ -186,19 +192,19 @@ namespace DouDiZhu.Logic.StateMachine
 
             // 更新桌面
             _state.TableCards = cardGroup;
-            _state.LastPlayedIndex = playerIndex;
+            _state.LastPlayedID = playerID;
             _state.PassCount = 0; // 重置过牌计数
 
             // 通知 UI 出牌成功
-            EventBus.Emit(new CardPlayedEvent(playerIndex, cardGroup));
+            EventBus.Emit(new CardPlayedEvent(playerID, cardGroup));
 
             // ---- 检查是否胜利 ----
             if (player.CardCount == 0)
             {
                 _currentState = GameRoundState.GameOver;
                 bool isLandlordWin = (player.Identity == PlayerIdentity.Landlord);
-                EventBus.Emit(new PlayerWinEvent(playerIndex, isLandlordWin));
-                EventBus.Emit(new GameOverEvent(playerIndex, player.PlayerName));
+                EventBus.Emit(new PlayerWinEvent(playerID, isLandlordWin));
+                EventBus.Emit(new GameOverEvent(playerID, player.PlayerName));
                 return;
             }
 
@@ -207,7 +213,7 @@ namespace DouDiZhu.Logic.StateMachine
         }
 
         // ========== 5. 过牌（Pass） ==========
-        public void Pass(int playerIndex)
+        public void Pass(int playerID)
         {
             if (_currentState != GameRoundState.Playing)
             {
@@ -215,9 +221,9 @@ namespace DouDiZhu.Logic.StateMachine
                 return;
             }
 
-            if (playerIndex != _state.CurrentTurnIndex)
+            if (playerID != _state.CurrentTurnID)
             {
-                EventBus.Emit(new InvalidOperationEvent($"未轮到玩家 {playerIndex} 过牌"));
+                EventBus.Emit(new InvalidOperationEvent($"未轮到玩家 {playerID} 过牌"));
                 return;
             }
 
@@ -230,20 +236,20 @@ namespace DouDiZhu.Logic.StateMachine
 
             // 执行过牌
             _state.PassCount++;
-            EventBus.Emit(new PassEvent(playerIndex));
+            EventBus.Emit(new PassEvent(playerID));
 
             // 检查是否连续两人过牌 -> 一轮结束，清空桌面
             if (_state.PassCount >= 2)
             {
                 // 上一轮最后一个出牌的人获得下一轮首出权
-                int lastPlayed = _state.LastPlayedIndex;
+                int lastPlayed = _state.LastPlayedID;
                 _state.TableCards = new CardGroup(new List<Card> { });
                 _state.PassCount = 0;
 
                 EventBus.Emit(new RoundClearedEvent(lastPlayed));
 
                 // 让最后出牌的人先出
-                _state.CurrentTurnIndex = lastPlayed;
+                _state.CurrentTurnID = lastPlayed;
                 EventBus.Emit(new TurnChangedEvent(lastPlayed));
                 return;
             }
@@ -255,24 +261,14 @@ namespace DouDiZhu.Logic.StateMachine
         // ========== 6. 回合流转（内部工具方法） ==========
         private void NextTurn()
         {
-            int next = GetNextPlayerIndex(_state.CurrentTurnIndex);
-            _state.CurrentTurnIndex = next;
-            EventBus.Emit(new TurnChangedEvent(next));
+            int next = GetNextPlayerIndex(_state.PlayerOrder.IndexOf(_state.CurrentTurnID));
+            _state.CurrentTurnID = _state.GetPlayerByIndex(next);
+            EventBus.Emit(new TurnChangedEvent(_state.CurrentTurnID));
         }
 
         private int GetNextPlayerIndex(int current)
         {
             return (current + 1) % 3; // 0->1, 1->2, 2->0
-        }
-
-        // ========== 7. 供外部调用的AI驱动接口 ==========
-        /// <summary>
-        /// 强制触发AI操作（由外部GameManager在AI回合调用）
-        /// </summary>
-        public void ForceAIAction()
-        {
-            // 实际调用由外部传入，此处仅作示意
-            // 真实场景中，外部检测到当前是AI，生成AIPlayCommand入队
         }
     }
 }

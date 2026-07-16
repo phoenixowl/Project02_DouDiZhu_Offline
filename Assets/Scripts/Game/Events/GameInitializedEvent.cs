@@ -6,14 +6,16 @@ namespace DouDiZhu.Logic.Events
     public readonly struct PlayerSummary
     {
         public readonly int PlayerId;
+        public readonly bool IsAI;
         public readonly string PlayerName;
         public readonly int CardCount;
         public readonly bool IsLocalPlayer;   // 是否为本地玩家（索引0）
         public readonly IReadOnlyList<Card> HandCards; // 仅当 IsLocalPlayer=true 时有效，AI玩家为 null
 
-        public PlayerSummary(int id, string name, int cardCount, bool isLocal, IReadOnlyList<Card> handCards = null)
+        public PlayerSummary(int id, bool isAI, string name, int cardCount, bool isLocal, IReadOnlyList<Card> handCards = null)
         {
             PlayerId = id;
+            IsAI = isAI;
             PlayerName = name;
             CardCount = cardCount;
             IsLocalPlayer = isLocal;
@@ -27,12 +29,10 @@ namespace DouDiZhu.Logic.Events
     public readonly struct GameInitializedEvent
     {
         public readonly IReadOnlyList<PlayerSummary> Players;
-        public readonly int FirstTurnIndex;
 
-        public GameInitializedEvent(IReadOnlyList<PlayerSummary> players, int firstTurnIndex)
+        public GameInitializedEvent(IReadOnlyList<PlayerSummary> players)
         {
             Players = players;
-            FirstTurnIndex = firstTurnIndex;
         }
     }
 }

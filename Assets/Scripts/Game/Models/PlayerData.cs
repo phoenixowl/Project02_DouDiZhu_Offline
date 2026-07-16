@@ -19,6 +19,8 @@ namespace DouDiZhu.Logic.Models
     public class PlayerData
     {
         public int PlayerID { get; private set; }          // 0=本地玩家, 1=AI_1, 2=AI_2
+
+        public bool IsAI { get; private set; }
         public string PlayerName { get; set; }             // 仅用于UI显示
         public List<Card> HandCards { get; private set; }  // 当前手牌
         public PlayerIdentity Identity { get; set; }       // 身份（地主/农民）
@@ -27,6 +29,7 @@ namespace DouDiZhu.Logic.Models
         public PlayerData(int id, string name = "")
         {
             PlayerID = id;
+            IsAI = false;
             PlayerName = string.IsNullOrEmpty(name) ? $"Player_{id}" : name;
             HandCards = new List<Card>();
             Identity = PlayerIdentity.Farmer; // 默认为农民
@@ -39,6 +42,14 @@ namespace DouDiZhu.Logic.Models
         public void AddCards(IEnumerable<Card> cards)
         {
             HandCards.AddRange(cards);
+        }
+
+        /// <summary>
+        //切换AI托管
+        /// <summary>
+        public void SetAIHosting(bool isAI)
+        {
+            IsAI = isAI;
         }
 
         /// <summary>

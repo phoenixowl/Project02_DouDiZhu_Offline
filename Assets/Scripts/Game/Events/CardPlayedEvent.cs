@@ -8,11 +8,11 @@ namespace DouDiZhu.Logic.Events
     /// </summary>
     public readonly struct CardPlayedEvent
     {
-        public readonly int PlayerIndex;
+        public readonly int PlayerID;
         public readonly CardGroup CardGroup;
-        public CardPlayedEvent(int playerIndex, CardGroup cardGroup)
+        public CardPlayedEvent(int playerID, CardGroup cardGroup)
         {
-            PlayerIndex = playerIndex;
+            PlayerID = playerID;
             CardGroup = cardGroup;
         }
     }

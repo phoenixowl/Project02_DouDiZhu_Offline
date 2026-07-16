@@ -2,24 +2,25 @@ using DouDiZhu.Logic.StateMachine;
 
 namespace DouDiZhu.Logic.Commands
 {
+    //已经弃用
     /// <summary>
     /// 过牌命令
     /// </summary>
-    public class PassCommand : ICommand
-    {
-        private readonly RoundController _controller;
-        private readonly int _playerId;
+    //public class PassCommand : ICommand
+    //{
+    //    private readonly RoundController _controller;
+    //    private readonly int _playerId;
 
-        public PassCommand(RoundController controller, int playerId)
-        {
-            _controller = controller;
-            _playerId = playerId;
-        }
+    //    public PassCommand(RoundController controller, int playerId)
+    //    {
+    //        _controller = controller;
+    //        _playerId = playerId;
+    //    }
 
-        public void Execute()
-        {
-            int seatIndex = PlayerIdMapper.GetSeatIndex(_playerId);
-            _controller.Pass(seatIndex);
-        }
-    }
+    //    public void Execute()
+    //    {
+    //        int seatIndex = PlayerIdMapper.GetSeatIndex(_playerId);
+    //        _controller.Pass(seatIndex);
+    //    }
+    //}
 }

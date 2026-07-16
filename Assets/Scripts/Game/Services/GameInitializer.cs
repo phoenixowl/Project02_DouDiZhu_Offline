@@ -1,6 +1,7 @@
 using DouDiZhu.Logic.Models;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 
 namespace DouDiZhu.Logic.Services
 {
@@ -14,7 +15,7 @@ namespace DouDiZhu.Logic.Services
         /// </summary>
         /// <param name="playerNames">三个玩家的名字（可选）</param>
         /// <returns>初始化完成的 GameState</returns>
-        public static GameState InitializeNewGame(string[] playerNames = null)
+        public static GameState InitializeNewGame(List<int> playerIDs, string[] playerNames = null)
         {
             // ========== 1. 获取洗好的完整牌堆 ==========
             List<Card> shuffledDeck = CardDeckUtility.CreateShuffledDeck(); // 一步到位
@@ -23,21 +24,30 @@ namespace DouDiZhu.Logic.Services
             GameState state = new GameState();
             string[] defaultNames = { "我", "AI_小蓝", "AI_小红" };
 
+            if(playerIDs.Count < 3)
+            {
+                throw new ArgumentOutOfRangeException("错误：初始化游戏至少需要三个玩家ID");
+            }
+
             for (int i = 0; i < 3; i++)
             {
                 string name = (playerNames != null && i < playerNames.Length)
                                 ? playerNames[i]
                                 : defaultNames[i];
-                state.Players.Add(new PlayerData(i, name));
+                if(playerIDs.Count > i)
+                {
+                    state.PlayerDict[playerIDs[i]] = new PlayerData(playerIDs[i], name);
+                    state.PlayerOrder.Add(playerIDs[i]);
+                }
             }
 
             // ========== 3. 轮循发牌（每人17张，留3张底牌） ==========
             int cardIndex = 0;
             for (int round = 0; round < 17; round++)
             {
-                for (int playerIdx = 0; playerIdx < 3; playerIdx++)
+                for (int i = 0; i < 3; i++)
                 {
-                    state.Players[playerIdx].AddCards(new List<Card> { shuffledDeck[cardIndex] });
+                    state.PlayerDict[playerIDs[i]].AddCards(new List<Card> { shuffledDeck[cardIndex] });
                     cardIndex++;
                 }
             }
@@ -48,14 +58,14 @@ namespace DouDiZhu.Logic.Services
             state.HoleCards.Add(shuffledDeck[53]);
 
             // ========== 4. 手牌排序 ==========
-            foreach (var player in state.Players)
+            foreach (var player in state.PlayerDict.Values)
             {
                 player.SortHand();
             }
 
             // ========== 5. 初始化回合状态 ==========
-            state.CurrentTurnIndex = 0;
-            state.LandlordIndex = -1;
+            state.CurrentTurnID = state.PlayerOrder[0];
+            state.LandlordID = 0;
             state.TableCards = new CardGroup(new List<Card> { });
             state.PassCount = 0;
             state.IsGameOver = false;
