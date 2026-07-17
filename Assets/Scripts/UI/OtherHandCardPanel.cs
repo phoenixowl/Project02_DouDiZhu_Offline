@@ -16,21 +16,37 @@ public class OtherHandCardPanel : MonoBehaviour
     [SerializeField] private Text cardCountText;              // 手牌数量显示（如 "17张"）
     [SerializeField] private Transform cardLayout;     // 牌背堆叠容器
     [SerializeField] private GameObject cardBackPrefab;       // 牌背预制体
+    [SerializeField] private SpriteRenderer landLordTag;
+    [SerializeField] private GameObject clock;
+    [SerializeField] private GameObject aIImage;
+    [SerializeField] private Text clockText;
 
     // 缓存
     private int currentCardCount = 0;
     private bool isSubscribed = false;
 
+    //时钟相关
+    private int currentNumber = 30; // 当前数字
+    private float timer = 0f;       // 累计时间的计时器
+    private bool isCounting = false;// 是否在倒计时中
+
+
     // ============================================================
     // Unity 生命周期
     // ============================================================
 
-    private void Start()
+    private void Awake()
     {
         // 初始状态：隐藏所有
         SetVisible(false);
 
         SubscribeEvents();
+    }
+
+    private void Update()
+    {
+
+        RefreshClockText(Time.deltaTime);
     }
 
     private void OnDestroy()
@@ -50,6 +66,7 @@ public class OtherHandCardPanel : MonoBehaviour
         EventBus.Subscribe<LandlordConfirmedEvent>(OnLandlordConfirmed);
         EventBus.Subscribe<CardPlayedEvent>(OnCardPlayed);
         EventBus.Subscribe<TurnChangedEvent>(OnTurnChanged);
+        EventBus.Subscribe<AIHostEvent>(OnAIHost);
         EventBus.Subscribe<GameOverEvent>(OnGameOver);
 
         isSubscribed = true;
@@ -59,11 +76,12 @@ public class OtherHandCardPanel : MonoBehaviour
     {
         if (!isSubscribed) return;
 
-        EventBus.Subscribe<GameInitializedEvent>(OnGameInitialized);
-        EventBus.Subscribe<LandlordConfirmedEvent>(OnLandlordConfirmed);
-        EventBus.Subscribe<CardPlayedEvent>(OnCardPlayed);
-        EventBus.Subscribe<TurnChangedEvent>(OnTurnChanged);
-        EventBus.Subscribe<GameOverEvent>(OnGameOver);
+        EventBus.Unsubscribe<GameInitializedEvent>(OnGameInitialized);
+        EventBus.Unsubscribe<LandlordConfirmedEvent>(OnLandlordConfirmed);
+        EventBus.Unsubscribe<CardPlayedEvent>(OnCardPlayed);
+        EventBus.Unsubscribe<TurnChangedEvent>(OnTurnChanged);
+        EventBus.Unsubscribe<AIHostEvent>(OnAIHost);
+        EventBus.Unsubscribe<GameOverEvent>(OnGameOver);
 
         isSubscribed = false;
     }
@@ -94,6 +112,15 @@ public class OtherHandCardPanel : MonoBehaviour
     /// </summary>
     private void OnLandlordConfirmed(LandlordConfirmedEvent evt)
     {
+        int landlordSeat = evt.LandlordID;
+        if (landlordSeat == playerId)
+        {
+            //显示地主UI标记
+            landLordTag.enabled = true;
+            // 将底牌加入手牌
+            currentCardCount +=3;
+            UpdateCardCountDisplay(currentCardCount);
+        }
     }
 
     /// <summary>
@@ -115,8 +142,29 @@ public class OtherHandCardPanel : MonoBehaviour
     /// </summary>
     private void OnTurnChanged(TurnChangedEvent evt)
     {
-
+        if (evt.PlayerID == playerId)
+        {
+            clock.SetActive(true);
+            StartCountdown();
+        }
+        else
+        {
+            clock.SetActive(false);
+            StopCountdown();
+        }
     }
+
+    /// <summary>
+    /// 切换AI托管
+    /// </summary>
+    private void OnAIHost(AIHostEvent evt)
+    {
+        if (evt.PlayerId == playerId)
+        {
+            aIImage.SetActive(evt.IsCalling);
+        }
+    }
+
 
     /// <summary>
     /// 游戏结束：取消高亮
@@ -165,6 +213,51 @@ public class OtherHandCardPanel : MonoBehaviour
             GameObject go = Instantiate(cardBackPrefab, cardLayout);
         }
 
+    }
+
+    private void StartCountdown()
+    {
+        if (clockText == null)
+        {
+            Debug.LogError("请在 Inspector 面板中拖入 Text 物体！");
+            return;
+        }
+
+        // 重置状态
+        currentNumber = 30;
+        timer = 0f;
+        isCounting = true;
+        clockText.text = currentNumber.ToString();
+    }
+
+    private void RefreshClockText(float time)
+    {
+        if (!isCounting) return; // 未启动倒计时则不执行
+
+        timer += time; // 累计每帧的时间
+
+        // 当累计时间达到1秒
+        if (timer >= 1f)
+        {
+            timer -= 1f; // 减去1秒，保留余数（避免时间误差）
+            currentNumber--;
+            clockText.text = currentNumber.ToString();
+
+            // 减到0时停止倒计时
+            if (currentNumber <= 0)
+            {
+                isCounting = false;
+                clockText.text = "0"; // 确保最终显示0
+            }
+        }
+    }
+
+    private void StopCountdown()
+    {
+        currentNumber = 30;
+        timer = 0f;
+        isCounting = false;
+        clockText.text = currentNumber.ToString();
     }
 
     // ============================================================

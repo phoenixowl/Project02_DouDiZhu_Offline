@@ -12,9 +12,6 @@ public class GameEntry : MonoBehaviour
     [SerializeField] private int _ownerId = 0;
     [SerializeField] private bool _allAI = false;
 
-    [Header("AI调度")]
-    [SerializeField] private float _aiInterval = 0.5f;
-
     private RoomManager _room;
 
     void Start()
@@ -29,25 +26,22 @@ public class GameEntry : MonoBehaviour
 
         _room = new RoomManager(_roomId, _ownerId, playerIds, aiMap);
         _room.OnGameLog += Debug.Log;
-        _room.OnStateUpdated += (state) => { /* 更新UI */ };
+        _room.OnGameStateUpdated += (state) => { /* 更新UI */ };
+        _room.OnRoomStateChanged += (state) => Debug.Log($"房间状态: {state}");
 
-        // 发射开始游戏请求
-        EventBus.Emit(new RequestStartGameEvent());
-
-        StartCoroutine(AIDispatcher());
+        // 模拟：房主自动准备，其他玩家通过UI点击准备（此处演示全部自动准备）
+        _room.ToggleReady(10000);
+        _room.ToggleReady(10001);
+        _room.ToggleReady(10002);
     }
 
-    private IEnumerator AIDispatcher()
+    void Update()
     {
-        while (!_room.IsGameOver)
-        {
-            yield return new WaitForSeconds(_aiInterval);
-            if (_room.HasPendingAIAction)
-            {
-                _room.ExecuteAIAction();
-            }
-        }
+        _room?.Update(Time.deltaTime);
     }
 
-    void OnDestroy() => _room?.Dispose();
+    void OnDestroy()
+    {
+        _room?.Dispose();
+    }
 }
