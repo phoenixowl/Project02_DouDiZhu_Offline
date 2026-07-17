@@ -19,6 +19,7 @@ public class OtherHandCardPanel : MonoBehaviour
     [SerializeField] private SpriteRenderer landLordTag;
     [SerializeField] private GameObject clock;
     [SerializeField] private GameObject aIImage;
+    [SerializeField] private GameObject readyImage;
     [SerializeField] private Text clockText;
 
     // 缓存
@@ -37,8 +38,6 @@ public class OtherHandCardPanel : MonoBehaviour
 
     private void Awake()
     {
-        // 初始状态：隐藏所有
-        SetVisible(false);
 
         SubscribeEvents();
     }
@@ -62,12 +61,14 @@ public class OtherHandCardPanel : MonoBehaviour
     {
         if (isSubscribed) return;
 
+        EventBus.Subscribe<ReadyEvent>(OnReady);
         EventBus.Subscribe<GameInitializedEvent>(OnGameInitialized);
         EventBus.Subscribe<LandlordConfirmedEvent>(OnLandlordConfirmed);
         EventBus.Subscribe<CardPlayedEvent>(OnCardPlayed);
         EventBus.Subscribe<TurnChangedEvent>(OnTurnChanged);
         EventBus.Subscribe<AIHostEvent>(OnAIHost);
         EventBus.Subscribe<GameOverEvent>(OnGameOver);
+        EventBus.Subscribe<GameResetEvent>(OnGameReset);
 
         isSubscribed = true;
     }
@@ -76,12 +77,14 @@ public class OtherHandCardPanel : MonoBehaviour
     {
         if (!isSubscribed) return;
 
+        EventBus.Unsubscribe<ReadyEvent>(OnReady);
         EventBus.Unsubscribe<GameInitializedEvent>(OnGameInitialized);
         EventBus.Unsubscribe<LandlordConfirmedEvent>(OnLandlordConfirmed);
         EventBus.Unsubscribe<CardPlayedEvent>(OnCardPlayed);
         EventBus.Unsubscribe<TurnChangedEvent>(OnTurnChanged);
         EventBus.Unsubscribe<AIHostEvent>(OnAIHost);
         EventBus.Unsubscribe<GameOverEvent>(OnGameOver);
+        EventBus.Unsubscribe<GameResetEvent>(OnGameReset);
 
         isSubscribed = false;
     }
@@ -89,6 +92,21 @@ public class OtherHandCardPanel : MonoBehaviour
     // ============================================================
     // 事件回调
     // ============================================================
+
+    private void OnReady(ReadyEvent evt)
+    {
+        if (evt.PlayerId == playerId)
+        {
+            if (evt.IsReady)
+            {
+                readyImage.SetActive(true);
+            }
+            else
+            {
+                readyImage.SetActive(false);
+            }
+        }
+    }
 
     /// <summary>
     /// 游戏初始化：显示该玩家的手牌数量
@@ -101,10 +119,11 @@ public class OtherHandCardPanel : MonoBehaviour
             {
                 currentCardCount = player.CardCount;
                 UpdateDisplay(player.PlayerName, currentCardCount);
-                SetVisible(true);
                 break;
             }
         }
+
+        readyImage.SetActive(false);
     }
 
     /// <summary>
@@ -172,6 +191,15 @@ public class OtherHandCardPanel : MonoBehaviour
     private void OnGameOver(GameOverEvent evt)
     {
 
+    }
+
+    private void OnGameReset(GameResetEvent evt)
+    {
+        landLordTag.enabled = false;
+        StopCountdown();
+        clock.SetActive(false);
+        aIImage.SetActive(false);
+        readyImage.SetActive(false);
     }
 
     // ============================================================

@@ -30,9 +30,8 @@ public class GameEntry : MonoBehaviour
         _room.OnRoomStateChanged += (state) => Debug.Log($"房间状态: {state}");
 
         // 模拟：房主自动准备，其他玩家通过UI点击准备（此处演示全部自动准备）
-        _room.ToggleReady(10000);
-        _room.ToggleReady(10001);
-        _room.ToggleReady(10002);
+        EventBus.Emit(new RequestReadyEvent(10001));
+        EventBus.Emit(new RequestReadyEvent(10002));
     }
 
     void Update()

@@ -24,11 +24,13 @@ public class CardCounterPanel : MonoBehaviour
     private void SubscribeEvents()
     {
         EventBus.Subscribe<CardPlayedEvent>(OnCardPlayed);
+        EventBus.Subscribe<GameResetEvent>(OnGameReset);
     }
 
     private void UnsubscribeEvents()
     {
         EventBus.Unsubscribe<CardPlayedEvent>(OnCardPlayed);
+        EventBus.Unsubscribe<GameResetEvent>(OnGameReset);
     }
 
     /// <summary>
@@ -49,6 +51,18 @@ public class CardCounterPanel : MonoBehaviour
                     numTexts[index].text = (value - 1).ToString();
                 }
             }
+        }
+    }
+
+    private void OnGameReset(GameResetEvent evt)
+    {
+        for (int i = 0; i < numTexts.Count; i++)
+        {
+            if(numTexts[i] != null)
+            {
+                numTexts[i].text = i > 1 ? "4" : "1";
+            }
+
         }
     }
 }

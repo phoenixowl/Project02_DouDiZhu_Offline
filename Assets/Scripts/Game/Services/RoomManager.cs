@@ -51,11 +51,11 @@ namespace DouDiZhu.Logic.Room
             RoomOwnerId = ownerId;
             _playerIds = new List<int>(playerIds);
 
-            // 初始化准备状态（房主默认准备）
+            // 初始化准备状态
             _playerReadyStatus = new Dictionary<int, bool>();
             foreach (var pid in _playerIds)
             {
-                _playerReadyStatus[pid] = (pid == ownerId);
+                _playerReadyStatus[pid] = false;
             }
 
             // 初始化AI托管映射（默认false）
@@ -65,8 +65,31 @@ namespace DouDiZhu.Logic.Room
                 _aiHostingMap[pid] = aiHostingMap?.TryGetValue(pid, out bool v) == true ? v : false;
             }
 
-            // 不立刻订阅事件，游戏会话会自行订阅
+            // 订阅事件
+            SubscribeEvents();
             Log($"房间 [{RoomId}] 创建成功，等待玩家准备...");
+        }
+        // ============================================================
+        // 事件订阅
+        // ============================================================
+
+        private void SubscribeEvents()
+        {
+            EventBus.Subscribe<RequestReadyEvent>(OnRequestReady);
+        }
+
+        private void UnsubscribeEvents()
+        {
+            EventBus.Unsubscribe<RequestReadyEvent>(OnRequestReady);
+        }
+
+        // ============================================================
+        // 事件回调
+        // ============================================================
+
+        private void OnRequestReady(RequestReadyEvent evt)
+        {
+            ToggleReady(evt.PlayerId);
         }
 
         // ============================================================
@@ -89,6 +112,8 @@ namespace DouDiZhu.Logic.Room
 
             _playerReadyStatus[playerId] = !_playerReadyStatus[playerId];
             Log($"玩家 {playerId} {(IsPlayerReady(playerId) ? "准备就绪" : "取消准备")}");
+
+            EventBus.Emit(new ReadyEvent(playerId, _playerReadyStatus[playerId]));
 
             if (AllPlayersReady())
             {
@@ -150,9 +175,11 @@ namespace DouDiZhu.Logic.Room
             OnRoomStateChanged?.Invoke(CurrentRoomState);
 
             // 可选：自动重置准备状态，允许下一局
-            // ResetReadyStatus();
+            ResetReadyStatus();
 
             Log("游戏结束，回到房间大厅");
+
+            ResetRoom();
         }
 
         // ============================================================
@@ -200,6 +227,23 @@ namespace DouDiZhu.Logic.Room
             CurrentRoomState = RoomState.Lobby;
             OnRoomStateChanged?.Invoke(CurrentRoomState);
             Log("房间已重置，等待玩家准备");
+            EventBus.Emit(new GameResetEvent());
+
+            //测试用代码
+            EventBus.Emit(new RequestReadyEvent(10001));
+            EventBus.Emit(new RequestReadyEvent(10002));
+        }
+
+        /// <summary>
+        /// 重置所有玩家的准备状态（全部设为未准备）
+        /// </summary>
+        private void ResetReadyStatus()
+        {
+            foreach (var pid in _playerIds)
+            {
+                _playerReadyStatus[pid] = false;
+            }
+            Log("所有玩家准备状态已重置");
         }
 
         // ============================================================
@@ -209,6 +253,7 @@ namespace DouDiZhu.Logic.Room
         public void Dispose()
         {
             _gameSession?.Dispose();
+            UnsubscribeEvents();
             Log($"房间 [{RoomId}] 已销毁");
         }
 

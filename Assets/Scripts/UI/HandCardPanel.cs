@@ -20,9 +20,11 @@ public class HandCardPanel : MonoBehaviour
     [SerializeField] private Button hintButton;
     [SerializeField] private Button bidButton;
     [SerializeField] private Button notBidButton;
+    [SerializeField] private Button readyButton;
     [SerializeField] private Button aIHostButton;
     [SerializeField] private SpriteRenderer landLordTag;
     [SerializeField] private GameObject aIImage;
+    [SerializeField] private GameObject readyImage;
     [SerializeField] private GameObject clock;
     [SerializeField] private Text clockText;
     [SerializeField] private Text informText;
@@ -80,6 +82,9 @@ public class HandCardPanel : MonoBehaviour
         if (aIHostButton != null)
             aIHostButton.onClick.AddListener(OnAIHostButtonClick);
 
+        if (readyButton != null)
+            readyButton.onClick.AddListener(OnReadyButtonClick);
+
         // 初始状态：手牌为空，桌面为空
         RefreshHandUI();
         RefreshTableUI(null);
@@ -103,6 +108,7 @@ public class HandCardPanel : MonoBehaviour
 
     private void SubscribeEvents()
     {
+        EventBus.Subscribe<ReadyEvent>(OnReady);
         EventBus.Subscribe<GameInitializedEvent>(OnGameInitialized);
         EventBus.Subscribe<LandlordConfirmedEvent>(OnLandlordConfirmed);
         EventBus.Subscribe<HintEvent>(OnHinted);
@@ -112,10 +118,12 @@ public class HandCardPanel : MonoBehaviour
         EventBus.Subscribe<PlayRejectedEvent>(OnPlayRejected);
         EventBus.Subscribe<AIHostEvent>(OnAIHost);
         EventBus.Subscribe<GameOverEvent>(OnGameOver); // 可选，用于清空选中状态
+        EventBus.Subscribe<GameResetEvent>(OnGameReset);
     }
 
     private void UnsubscribeEvents()
     {
+        EventBus.Unsubscribe<ReadyEvent>(OnReady);
         EventBus.Unsubscribe<GameInitializedEvent>(OnGameInitialized);
         EventBus.Unsubscribe<LandlordConfirmedEvent>(OnLandlordConfirmed);
         EventBus.Unsubscribe<HintEvent>(OnHinted);
@@ -125,11 +133,28 @@ public class HandCardPanel : MonoBehaviour
         EventBus.Unsubscribe<PlayRejectedEvent>(OnPlayRejected);
         EventBus.Unsubscribe<AIHostEvent>(OnAIHost);
         EventBus.Unsubscribe<GameOverEvent>(OnGameOver);
+        EventBus.Unsubscribe<GameResetEvent>(OnGameReset);
     }
 
     // ============================================================
     // 事件回调（下行领域事件 → UI 更新）
     // ============================================================
+
+    private void OnReady(ReadyEvent evt)
+    {
+        if (evt.PlayerId == localPlayerId)
+        {
+            if (evt.IsReady)
+            {
+                readyImage.SetActive(true);
+            }
+            else
+            {
+                readyImage.SetActive(false);
+            }
+        }
+    }
+
 
     /// <summary>
     /// 游戏初始化：设置初始手牌
@@ -147,6 +172,8 @@ public class HandCardPanel : MonoBehaviour
             }
         }
 
+        readyImage.SetActive(false);
+        readyButton.gameObject.SetActive(false);
         bidButton.gameObject.SetActive(true);
         notBidButton.gameObject.SetActive(true);
     }
@@ -206,8 +233,7 @@ public class HandCardPanel : MonoBehaviour
             }
             else
             {
-                Debug.LogWarning($"提示：建议过牌。请稍后完成这部分代码");
-                //暂时留空
+                UpdateInformText("当前没有可以大过上家的牌");
             }
         }
     }
@@ -289,6 +315,26 @@ public class HandCardPanel : MonoBehaviour
     private void OnGameOver(GameOverEvent evt)
     {
         ClearSelectedState();
+    }
+
+    private void OnGameReset(GameResetEvent evt)
+    {
+        landLordTag.enabled = false;
+        currentTableGroup = null;
+        informLifeTime = 0f;
+        StopCountdown();
+        ClearHand();
+        RefreshTableUI(null);
+        clock.SetActive(false);
+        aIImage.SetActive(false);
+        readyImage.SetActive(false);
+
+        playCardButton.gameObject.SetActive(false);
+        passButton.gameObject.SetActive(false);
+        hintButton.gameObject.SetActive(false);
+        bidButton.gameObject.SetActive(false);
+        notBidButton.gameObject.SetActive(false);
+        readyButton.gameObject.SetActive(true);
     }
 
     // ============================================================
@@ -544,6 +590,11 @@ public class HandCardPanel : MonoBehaviour
     private void OnAIHostButtonClick()
     {
         EventBus.Emit(new RequestAIHostEvent(localPlayerId));
+    }
+
+    private void OnReadyButtonClick()
+    {
+        EventBus.Emit(new RequestReadyEvent(localPlayerId));
     }
 
     // ============================================================
