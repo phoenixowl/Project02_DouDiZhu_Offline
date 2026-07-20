@@ -26,10 +26,13 @@ namespace DouDiZhu.Logic.Room
         public IReadOnlyList<int> PlayerIds => _playerIds.AsReadOnly();
         public RoomState CurrentRoomState { get; private set; } = RoomState.Lobby;
         public GameState GameState => _gameSession.GameState;
+        public int MaxPlayerCount => 3;  // 斗地主固定3人
 
         // ========== 公开事件 ==========
         public event Action<RoomState> OnRoomStateChanged;
         public event Action<GameState> OnGameStateUpdated;
+        public event Action<int> OnPlayerJoined;      // 玩家加入房间
+        public event Action<int> OnPlayerLeft;
         public event Action<string> OnGameLog;
 
         // ========== 内部字段 ==========
@@ -42,32 +45,25 @@ namespace DouDiZhu.Logic.Room
         // 构造函数
         // ============================================================
 
-        public RoomManager(string roomId, int ownerId, List<int> playerIds, Dictionary<int, bool> aiHostingMap = null)
+        public RoomManager(string roomId, int ownerId)
         {
-            if (playerIds == null || playerIds.Count != 3)
-                throw new ArgumentException("斗地主必须恰好3名玩家");
+            if (string.IsNullOrEmpty(roomId))
+                throw new ArgumentException("房间ID不能为空");
 
             RoomId = roomId;
             RoomOwnerId = ownerId;
-            _playerIds = new List<int>(playerIds);
-
-            // 初始化准备状态
+            _playerIds = new List<int>();
             _playerReadyStatus = new Dictionary<int, bool>();
-            foreach (var pid in _playerIds)
-            {
-                _playerReadyStatus[pid] = false;
-            }
-
-            // 初始化AI托管映射（默认false）
             _aiHostingMap = new Dictionary<int, bool>();
-            foreach (var pid in _playerIds)
-            {
-                _aiHostingMap[pid] = aiHostingMap?.TryGetValue(pid, out bool v) == true ? v : false;
-            }
+
+            // 房主自动加入房间
+            AddPlayerInternal(ownerId, false);
+
 
             // 订阅事件
             SubscribeEvents();
-            Log($"房间 [{RoomId}] 创建成功，等待玩家准备...");
+
+            Log($"房间 [{RoomId}] 创建成功，房主: {ownerId}");
         }
         // ============================================================
         // 事件订阅
@@ -76,11 +72,15 @@ namespace DouDiZhu.Logic.Room
         private void SubscribeEvents()
         {
             EventBus.Subscribe<RequestReadyEvent>(OnRequestReady);
+            EventBus.Subscribe<RequestJoinRoomEvent>(OnRequestJoinRoom);
+            EventBus.Subscribe<RequestLeaveRoomEvent>(OnRequestLeaveRoom);
         }
 
         private void UnsubscribeEvents()
         {
             EventBus.Unsubscribe<RequestReadyEvent>(OnRequestReady);
+            EventBus.Unsubscribe<RequestJoinRoomEvent>(OnRequestJoinRoom);
+            EventBus.Unsubscribe<RequestLeaveRoomEvent>(OnRequestLeaveRoom);
         }
 
         // ============================================================
@@ -90,6 +90,136 @@ namespace DouDiZhu.Logic.Room
         private void OnRequestReady(RequestReadyEvent evt)
         {
             ToggleReady(evt.PlayerId);
+        }
+        private void OnRequestJoinRoom(RequestJoinRoomEvent evt)
+        {
+            JoinRoom(evt.PlayerId, evt.IsAI);
+        }
+
+        private void OnRequestLeaveRoom(RequestLeaveRoomEvent evt)
+        {
+            LeaveRoom(evt.PlayerId);
+        }
+
+        // ============================================================
+        // 加入/离开房间（公开方法，可由 GameEntry 或网络层调用）
+        // ============================================================
+
+        public bool JoinRoom(int playerId, bool isAI = false)
+        {
+            // 1. 检查玩家是否已在房间中
+            if (_playerIds.Contains(playerId))
+            {
+                Log($"玩家 {playerId} 已在房间中");
+                return false;
+            }
+
+            // 2. 检查房间是否已满
+            if (_playerIds.Count >= MaxPlayerCount)
+            {
+                Log($"房间已满，无法加入 (当前 {_playerIds.Count}/{MaxPlayerCount})");
+                return false;
+            }
+
+            // 3. 检查游戏状态是否允许加入（仅 Lobby 和 GameOver 状态允许）
+            if (CurrentRoomState == RoomState.Playing)
+            {
+                Log($"游戏进行中，无法加入");
+                return false;
+            }
+
+            // 4. 执行加入
+            AddPlayerInternal(playerId, isAI);
+
+            Log($"玩家 {playerId} 加入房间 (当前 {_playerIds.Count}/{MaxPlayerCount})");
+            OnPlayerJoined?.Invoke(playerId);
+            EventBus.Emit(new JoinRoomEvent(playerId, isAI));
+
+            return true;
+        }
+
+        /// <summary>
+        /// 玩家离开房间
+        /// </summary>
+        /// <param name="playerId">玩家ID</param>
+        /// <returns>是否成功离开</returns>
+        public bool LeaveRoom(int playerId)
+        {
+            // 1. 检查玩家是否在房间中
+            if (!_playerIds.Contains(playerId))
+            {
+                Log($"玩家 {playerId} 不在房间中");
+                return false;
+            }
+
+            // 2. 如果游戏正在进行，特殊处理
+            if (CurrentRoomState == RoomState.Playing)
+            {
+                // 如果当前游戏会话存在，先结束游戏
+                if (_gameSession != null)
+                {
+                    Log($"玩家 {playerId} 试图离开房间，但游戏正在进行，不能离开");
+                    return false;
+                }
+            }
+
+            // 3. 执行离开
+            RemovePlayerInternal(playerId);
+
+            Log($"玩家 {playerId} 离开房间 (剩余 {_playerIds.Count}/{MaxPlayerCount})");
+            OnPlayerLeft?.Invoke(playerId);
+            EventBus.Emit(new LeaveRoomEvent(playerId));
+
+            // 4. 如果房间为空，销毁房间？或者保持空房间等待
+            if (_playerIds.Count == 0)
+            {
+                Log("房间已空");
+                // 可以选择自动销毁，或保持空房间
+                // 这里由外部调用者决定，我们只通知状态变化
+            }
+
+            // 5. 如果房主离开，转移房主
+            if (playerId == RoomOwnerId && _playerIds.Count > 0)
+            {
+                int newOwner = _playerIds[0];
+                RoomOwnerId = newOwner;
+                Log($"房主转移给 {newOwner}");
+                EventBus.Emit(new RoomOwnerChangedEvent(newOwner));
+            }
+
+            // 6. 重置房间状态（如果是 GameOver 或 Lobby 且人数不足）
+            if (CurrentRoomState == RoomState.GameOver || CurrentRoomState == RoomState.Lobby)
+            {
+                // 如果人数不足3人，取消所有准备状态
+                if (_playerIds.Count < MaxPlayerCount)
+                {
+                    foreach (var pid in _playerIds)
+                    {
+                        _playerReadyStatus[pid] = false;
+                    }
+                    Log("人数不足，已重置所有玩家准备状态");
+                }
+            }
+
+            return true;
+        }
+
+        // ============================================================
+        // 内部加入/移除方法
+        // ============================================================
+
+        private void AddPlayerInternal(int playerId, bool isAI)
+        {
+            _playerIds.Add(playerId);
+            _playerReadyStatus[playerId] = false;
+            _aiHostingMap[playerId] = isAI;
+        }
+
+        private void RemovePlayerInternal(int playerId)
+        {
+            _playerIds.Remove(playerId);
+            _playerReadyStatus.Remove(playerId);
+            _aiHostingMap.Remove(playerId);
         }
 
         // ============================================================
@@ -129,6 +259,9 @@ namespace DouDiZhu.Logic.Room
 
         private bool AllPlayersReady()
         {
+            // 需要至少3人才能开始
+            if (_playerIds.Count < MaxPlayerCount) return false;
+
             foreach (var pid in _playerIds)
             {
                 if (!IsPlayerReady(pid)) return false;
@@ -144,6 +277,13 @@ namespace DouDiZhu.Logic.Room
         {
             if (CurrentRoomState != RoomState.Lobby) return;
             if (!AllPlayersReady()) return;
+
+            // 确保有3名玩家
+            if (_playerIds.Count != MaxPlayerCount)
+            {
+                Log($"玩家数量不足 ({_playerIds.Count}/{MaxPlayerCount})，无法开始");
+                return;
+            }
 
             // 1. 创建游戏会话
             _gameSession = new GameSession(_playerIds, _aiHostingMap, 0.8f);
@@ -173,9 +313,6 @@ namespace DouDiZhu.Logic.Room
         {
             CurrentRoomState = RoomState.GameOver;
             OnRoomStateChanged?.Invoke(CurrentRoomState);
-
-            // 可选：自动重置准备状态，允许下一局
-            ResetReadyStatus();
 
             Log("游戏结束，回到房间大厅");
 
@@ -218,10 +355,10 @@ namespace DouDiZhu.Logic.Room
             _gameSession?.Dispose();
             _gameSession = null;
 
-            // 重置准备状态（可自定义策略，例如仅房主准备）
+            // 重置准备状态
             foreach (var pid in _playerIds)
             {
-                _playerReadyStatus[pid] = (pid == RoomOwnerId);
+                _playerReadyStatus[pid] = false;
             }
 
             CurrentRoomState = RoomState.Lobby;
@@ -229,21 +366,44 @@ namespace DouDiZhu.Logic.Room
             Log("房间已重置，等待玩家准备");
             EventBus.Emit(new GameResetEvent());
 
-            //测试用代码
-            EventBus.Emit(new RequestReadyEvent(10001));
-            EventBus.Emit(new RequestReadyEvent(10002));
+            // 如果人数不足3人，等待玩家加入
+            if (_playerIds.Count < MaxPlayerCount)
+            {
+                Log($"等待更多玩家加入... (当前 {_playerIds.Count}/{MaxPlayerCount})");
+            }
+
+            //测试代码，请在多人模式中删除
+            foreach (var pid in _aiHostingMap.Keys)
+            {
+                if (IsPlayerInRoom(pid) && pid != 10000)
+                {
+                    ToggleReady(pid);
+                }
+            }
         }
 
-        /// <summary>
-        /// 重置所有玩家的准备状态（全部设为未准备）
-        /// </summary>
-        private void ResetReadyStatus()
+        // ============================================================
+        // 查询方法
+        // ============================================================
+
+        public bool IsRoomFull()
         {
-            foreach (var pid in _playerIds)
-            {
-                _playerReadyStatus[pid] = false;
-            }
-            Log("所有玩家准备状态已重置");
+            return _playerIds.Count >= MaxPlayerCount;
+        }
+
+        public bool IsPlayerInRoom(int playerId)
+        {
+            return _playerIds.Contains(playerId);
+        }
+
+        public int GetPlayerCount()
+        {
+            return _playerIds.Count;
+        }
+
+        public int GetSeatIndex(int playerId)
+        {
+            return _playerIds.IndexOf(playerId);
         }
 
         // ============================================================

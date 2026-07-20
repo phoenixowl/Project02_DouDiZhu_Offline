@@ -1,8 +1,9 @@
-using UnityEngine;
-using System.Collections.Generic;
-using UnityEngine.UI;
 using DouDiZhu.Logic.Events;
 using DouDiZhu.Logic.Models;
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.UI;
+using static UnityEditor.ShaderData;
 
 /// <summary>
 /// 敌方玩家手牌区（显示牌背数量 + 玩家信息）
@@ -15,10 +16,13 @@ public class OtherHandCardPanel : MonoBehaviour
     [SerializeField] private Text playerNameText;             // 玩家名称
     [SerializeField] private Text cardCountText;              // 手牌数量显示（如 "17张"）
     [SerializeField] private Transform cardLayout;     // 牌背堆叠容器
+    [SerializeField] private Transform tableCardLayout;   // 桌面牌型容器
+    [SerializeField] private GameObject cardPrefab;
     [SerializeField] private GameObject cardBackPrefab;       // 牌背预制体
     [SerializeField] private SpriteRenderer landLordTag;
     [SerializeField] private GameObject clock;
     [SerializeField] private GameObject aIImage;
+    [SerializeField] private GameObject passImage;
     [SerializeField] private GameObject readyImage;
     [SerializeField] private Text clockText;
 
@@ -42,6 +46,10 @@ public class OtherHandCardPanel : MonoBehaviour
         SubscribeEvents();
     }
 
+    private void Start()
+    {
+        RefreshTableUI(null);
+    }
     private void Update()
     {
 
@@ -65,6 +73,7 @@ public class OtherHandCardPanel : MonoBehaviour
         EventBus.Subscribe<GameInitializedEvent>(OnGameInitialized);
         EventBus.Subscribe<LandlordConfirmedEvent>(OnLandlordConfirmed);
         EventBus.Subscribe<CardPlayedEvent>(OnCardPlayed);
+        EventBus.Subscribe<PassEvent>(OnPass);
         EventBus.Subscribe<TurnChangedEvent>(OnTurnChanged);
         EventBus.Subscribe<AIHostEvent>(OnAIHost);
         EventBus.Subscribe<GameOverEvent>(OnGameOver);
@@ -81,6 +90,7 @@ public class OtherHandCardPanel : MonoBehaviour
         EventBus.Unsubscribe<GameInitializedEvent>(OnGameInitialized);
         EventBus.Unsubscribe<LandlordConfirmedEvent>(OnLandlordConfirmed);
         EventBus.Unsubscribe<CardPlayedEvent>(OnCardPlayed);
+        EventBus.Unsubscribe<PassEvent>(OnPass);
         EventBus.Unsubscribe<TurnChangedEvent>(OnTurnChanged);
         EventBus.Unsubscribe<AIHostEvent>(OnAIHost);
         EventBus.Unsubscribe<GameOverEvent>(OnGameOver);
@@ -153,6 +163,16 @@ public class OtherHandCardPanel : MonoBehaviour
             currentCardCount -= playedCount;
             if (currentCardCount < 0) currentCardCount = 0;
             UpdateCardCountDisplay(currentCardCount);
+            RefreshTableUI(evt.CardGroup);
+        }
+    }
+
+    private void OnPass(PassEvent evt)
+    {
+        if (evt.PlayerID == playerId)
+        {
+            passImage.SetActive(true);
+            RefreshTableUI(null);
         }
     }
 
@@ -163,6 +183,7 @@ public class OtherHandCardPanel : MonoBehaviour
     {
         if (evt.PlayerID == playerId)
         {
+            passImage.SetActive(false);
             clock.SetActive(true);
             StartCountdown();
         }
@@ -195,10 +216,12 @@ public class OtherHandCardPanel : MonoBehaviour
 
     private void OnGameReset(GameResetEvent evt)
     {
+        RefreshTableUI(null);
         landLordTag.enabled = false;
         StopCountdown();
         clock.SetActive(false);
         aIImage.SetActive(false);
+        passImage.SetActive(false);
         readyImage.SetActive(false);
     }
 
@@ -213,6 +236,34 @@ public class OtherHandCardPanel : MonoBehaviour
             playerNameText.text = playerName;
 
         UpdateCardCountDisplay(cardCount);
+    }
+
+    private void RefreshTableUI(CardGroup group)
+    {
+        // 清空桌面显示
+        if (tableCardLayout != null)
+        {
+            foreach (Transform child in tableCardLayout)
+                Destroy(child.gameObject);
+        }
+
+        if (group == null || group.Cards.Count == 0)
+            return;
+
+        // 在桌面显示牌（简单显示牌面，也可以显示牌背）
+        foreach (var card in group.Cards)
+        {
+            if (cardPrefab != null && tableCardLayout != null)
+            {
+                GameObject cardObj = Instantiate(cardPrefab, tableCardLayout);
+                CardPanel panel = cardObj.GetComponent<CardPanel>();
+                if (panel != null)
+                {
+                    panel.Init(card);
+                    panel.SetInteractable(false); // 桌面牌不可点击
+                }
+            }
+        }
     }
 
     private void UpdateCardCountDisplay(int cardCount)

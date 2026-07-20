@@ -114,6 +114,7 @@ public class HandCardPanel : MonoBehaviour
         EventBus.Subscribe<HintEvent>(OnHinted);
         EventBus.Subscribe<TurnChangedEvent>(OnTurnChanged);
         EventBus.Subscribe<CardPlayedEvent>(OnCardPlayed);
+        EventBus.Subscribe<PassEvent>(OnPass);
         EventBus.Subscribe<RoundClearedEvent>(OnRoundCleared);
         EventBus.Subscribe<PlayRejectedEvent>(OnPlayRejected);
         EventBus.Subscribe<AIHostEvent>(OnAIHost);
@@ -129,6 +130,7 @@ public class HandCardPanel : MonoBehaviour
         EventBus.Unsubscribe<HintEvent>(OnHinted);
         EventBus.Unsubscribe<TurnChangedEvent>(OnTurnChanged);
         EventBus.Unsubscribe<CardPlayedEvent>(OnCardPlayed);
+        EventBus.Unsubscribe<PassEvent>(OnPass);
         EventBus.Unsubscribe<RoundClearedEvent>(OnRoundCleared);
         EventBus.Unsubscribe<PlayRejectedEvent>(OnPlayRejected);
         EventBus.Unsubscribe<AIHostEvent>(OnAIHost);
@@ -260,11 +262,8 @@ public class HandCardPanel : MonoBehaviour
     /// </summary>
     private void OnCardPlayed(CardPlayedEvent evt)
     {
-        // 1. 更新桌面牌型
-        currentTableGroup = evt.CardGroup;
-        RefreshTableUI(currentTableGroup);
 
-        // 2. 如果是本地玩家出的牌，更新手牌
+        //如果是本地玩家出的牌，更新手牌
         if (evt.PlayerID == localPlayerId)
         {
             // 从本地手牌中移除这些牌
@@ -274,6 +273,18 @@ public class HandCardPanel : MonoBehaviour
                 localHandCards.Remove(card);
             }
             RefreshHandUI();
+
+            //更新桌面牌型
+            currentTableGroup = evt.CardGroup;
+            RefreshTableUI(currentTableGroup);
+        }
+    }
+
+    private void OnPass(PassEvent evt)
+    {
+        if (evt.PlayerID == localPlayerId)
+        {
+            RefreshTableUI(null);
         }
     }
 

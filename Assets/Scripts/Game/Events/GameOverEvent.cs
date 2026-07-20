@@ -7,10 +7,12 @@ namespace DouDiZhu.Logic.Events
     {
         public readonly int WinnerID;
         public readonly string WinnerName;
-        public GameOverEvent(int winnerID, string winnerName)
+        public readonly bool IsLandLord;
+        public GameOverEvent(int winnerID, string winnerName, bool isLandLord)
         {
             WinnerID = winnerID;
             WinnerName = winnerName;
+            IsLandLord = isLandLord;
         }
     }
 }
